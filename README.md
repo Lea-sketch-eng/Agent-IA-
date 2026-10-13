@@ -11,6 +11,8 @@ Agent Claude Code spécialisé dans le **debug**, la **correction de code** et l
 | `templates/tests/user/PLAN_TESTS_UTILISATEURS.md` | Modèle de plan de tests utilisateurs (personas, Given/When/Then, session exploratoire) |
 | `templates/scripts/validate_data.py` | Data Testing : schéma, types, plages, valeurs manquantes, dérive (KS) |
 | `templates/github-actions-ml-tests.yml` | Workflow CI MLOps (pytest + validation données + évaluation + rapport CML) |
+| `.github/workflows/pr-quality-deploy.yml` | Revue automatique de chaque PR (qualité, déploiement, revue Claude) |
+| `scripts/check_claude_config.py` | Vérifie que les agents et skills sont valides avant déploiement |
 
 ## Installation dans un autre projet
 
@@ -42,6 +44,24 @@ cp -r .claude/skills/debug-test ~/.claude/skills/
 - Exécute des tests utilisateurs réels (CLI, API, web via Playwright, modèle IA / LLM) avec personas et cas limites
 - Contrôle les aspects IA : qualité et dérive des données, métriques ≥ 80 %, fuite de données, biais (impact disparate)
 - Rend un rapport structuré : diagnostic, correctif, vérification, tests utilisateurs, risques
+
+## Revue automatique de chaque PR
+
+Le workflow `.github/workflows/pr-quality-deploy.yml` se lance **automatiquement** à chaque PR ouverte ou mise à jour :
+
+| Job | Vérifications |
+|---|---|
+| Qualité du code | actionlint (workflows), ruff + pytest avec couverture (Python), lint/test/build (Node.js) — détection automatique de la stack |
+| Vérification du déploiement | Validation des agents/skills Claude, build Docker + smoke test HTTP si un `Dockerfile` existe |
+| Smoke test de l'environnement déployé | À chaque `deployment_status` réussi (Vercel, Netlify, Render…), vérifie que l'URL déployée répond |
+| Revue Claude (Debug-Tester) | Revue de la PR (qualité, sécurité, tests, déploiement, IA/ML), commentaires inline et verdict ✅ / ⚠️ / ❌ |
+
+### Mise en place (une seule fois)
+
+1. Installer l'app GitHub Claude sur le dépôt : <https://github.com/apps/claude>
+2. Ajouter le secret `ANTHROPIC_API_KEY` (ou `CLAUDE_CODE_OAUTH_TOKEN`, obtenu avec `claude setup-token`) dans **Settings → Secrets and variables → Actions**. Sans ce secret, les autres jobs tournent et la revue Claude est simplement ignorée.
+3. (Optionnel) Variables `APP_PORT` et `HEALTH_PATH` pour le smoke test Docker (par défaut `8080` et `/`).
+4. (Recommandé) **Settings → Branches → règle de protection sur `main`** : rendre obligatoires « Qualité du code » et « Vérification du déploiement » pour empêcher le merge d'une PR en échec.
 
 ## Corrections apportées au workflow fourni
 

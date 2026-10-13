@@ -1,0 +1,203 @@
+name: PR – Qualité & Déploiement
+
+# Se déclenche automatiquement sur chaque PR (aucune action manuelle requise)
+# et à chaque déploiement réussi (preview Vercel/Netlify/Render… ou environnement GitHub).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  deployment_status:
+  workflow_dispatch:
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ───────────────────────── 1. Qualité du code ─────────────────────────
+  quality:
+    name: Qualité du code
+    if: github.event_name != 'deployment_status'
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.stack.outputs.python }}
+      node: ${{ steps.stack.outputs.node }}
+      docker: ${{ steps.stack.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Détecter la stack du projet
+        id: stack
+        run: |
+          if [ -n "$(git ls-files '*.py')" ]; then echo "python=true" >> "$GITHUB_OUTPUT"; fi
+          if [ -f package.json ]; then echo "node=true" >> "$GITHUB_OUTPUT"; fi
+          if [ -f Dockerfile ]; then echo "docker=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Lint des workflows GitHub Actions (actionlint)
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
+
+      # --- Python ---
+      - uses: actions/setup-python@v5
+        if: steps.stack.outputs.python == 'true'
+        with:
+          python-version: '3.11'
+
+      - name: Installer les dépendances Python
+        if: steps.stack.outputs.python == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff pytest pytest-cov
+          for f in requirements.txt requirements-dev.txt; do
+            if [ -f "$f" ]; then pip install -r "$f"; fi
+          done
+
+      - name: Lint Python (ruff)
+        if: steps.stack.outputs.python == 'true'
+        run: ruff check --output-format=github .
+
+      - name: Tests Python + couverture (pytest)
+        if: steps.stack.outputs.python == 'true'
+        run: |
+          set +e
+          pytest --cov --cov-report=term-missing --junitxml=junit/test-results.xml
+          code=$?
+          # 5 = aucun test trouvé : on ne bloque pas un projet sans tests
+          if [ "$code" -eq 5 ]; then echo "::warning::Aucun test Python trouvé"; exit 0; fi
+          exit "$code"
+
+      # --- Node.js ---
+      - uses: actions/setup-node@v4
+        if: steps.stack.outputs.node == 'true'
+        with:
+          node-version: '20'
+
+      - name: Lint, tests et build Node.js
+        if: steps.stack.outputs.node == 'true'
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          npm run lint --if-present
+          npm test --if-present
+          npm run build --if-present
+
+  # ──────────────────── 2. Vérification du déploiement ────────────────────
+  deploy-check:
+    name: Vérification du déploiement
+    needs: quality
+    runs-on: ubuntu-latest
+    env:
+      APP_PORT: ${{ vars.APP_PORT || '8080' }}
+      HEALTH_PATH: ${{ vars.HEALTH_PATH || '/' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Valider la configuration des agents Claude
+        if: hashFiles('.claude/**') != ''
+        run: python3 scripts/check_claude_config.py
+
+      - name: Build de l'image Docker
+        if: needs.quality.outputs.docker == 'true'
+        run: docker build -t app:pr .
+
+      - name: Smoke test du conteneur
+        if: needs.quality.outputs.docker == 'true'
+        run: |
+          docker run -d --name app -p "$APP_PORT:$APP_PORT" -e PORT="$APP_PORT" app:pr
+          for i in $(seq 1 30); do
+            if curl -fsS "http://localhost:$APP_PORT$HEALTH_PATH" > /dev/null; then
+              echo "✅ Application joignable sur $HEALTH_PATH"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::L'application ne répond pas sur le port $APP_PORT$HEALTH_PATH"
+          docker logs app
+          exit 1
+
+  # ─────────────── 3. Smoke test d'un déploiement réel (preview) ───────────────
+  deployed-smoke-test:
+    name: Smoke test de l'environnement déployé
+    if: github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier que l'URL déployée répond
+        env:
+          URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+        run: |
+          if [ -z "$URL" ]; then echo "::warning::Aucune URL de déploiement fournie"; exit 0; fi
+          for i in $(seq 1 10); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' -L "$URL")
+            if [ "$status" -ge 200 ] && [ "$status" -lt 400 ]; then
+              echo "✅ $URL répond ($status)"; exit 0
+            fi
+            echo "Tentative $i : HTTP $status"; sleep 6
+          done
+          echo "::error::Le déploiement $URL ne répond pas correctement (dernier statut : $status)"
+          exit 1
+
+  # ───────────────────── 4. Revue automatique par Claude ─────────────────────
+  claude-review:
+    name: Revue Claude (Debug-Tester)
+    needs: [quality, deploy-check]
+    if: always() && github.event_name == 'pull_request' && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Vérifier la présence du secret Claude
+        id: secret
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ] || [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Secret ANTHROPIC_API_KEY ou CLAUDE_CODE_OAUTH_TOKEN absent : revue Claude ignorée"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.secret.outputs.ok == 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        if: steps.secret.outputs.ok == 'true'
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            BASE: ${{ github.event.pull_request.base.ref }}
+
+            Résultats des jobs automatiques sur ce commit :
+            - Qualité du code : ${{ needs.quality.result }}
+            - Vérification du déploiement : ${{ needs.deploy-check.result }}
+            (Détails : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            Lis `.claude/agents/debug-tester.md` et applique son rôle, ses principes et ses 5 piliers.
+            Fais une revue en français de cette PR (`gh pr diff`, `gh pr view`) :
+
+            1. Qualité du code : bugs, lisibilité, duplication, gestion d'erreurs, conventions du dépôt.
+            2. Sécurité : secrets en clair, injections, entrées non validées, dépendances risquées.
+            3. Tests : les changements sont-ils couverts ? Propose les tests manquants (y compris tests utilisateurs).
+            4. Déploiement : si un job ci-dessus est en échec, lis ses logs (`gh run view ${{ github.run_id }} --log-failed`),
+               explique la cause racine et propose le correctif exact.
+            5. IA/ML (si concerné) : validation des données, métriques et seuils, fuite de données, biais.
+
+            Publie :
+            - un commentaire inline (`mcp__github_inline_comment__create_inline_comment`) pour chaque problème bloquant, avec la correction suggérée ;
+            - un commentaire de synthèse unique (`gh pr comment`) en bullet points avec un verdict final :
+              ✅ Prêt à merger · ⚠️ Corrections mineures · ❌ Bloquant.
+            Ne signale que des problèmes réels et vérifiés ; pas de remarques de style sans impact.
+          claude_args: |
+            --max-turns 30
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh run view:*),Read,Grep,Glob"
