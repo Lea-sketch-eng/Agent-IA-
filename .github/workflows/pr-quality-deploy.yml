@@ -116,6 +116,52 @@ jobs:
           docker logs app
           exit 1
 
+  # ─────────── 2b. Base de données : migrations sur une base jetable ───────────
+  # La base de production n'est jamais touchée par une PR : Railway applique
+  # les migrations en production uniquement après le merge sur main.
+  database:
+    name: Migrations BDD (PostgreSQL + Redis jetables)
+    needs: quality
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:8.2
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt pytest
+
+      - name: Appliquer les migrations (2 fois pour vérifier l'idempotence)
+        run: |
+          python scripts/migrate.py
+          python scripts/migrate.py | grep -q "Base déjà à jour"
+
+      - name: Tests des migrations
+        run: pytest tests/test_migrate.py -v
+
+      - name: Vérifier Redis
+        run: python -c "import os, redis; assert redis.from_url(os.environ['REDIS_URL']).ping(); print('✅ Redis OK')"
+
   # ─────────────── 3. Smoke test d'un déploiement réel (preview) ───────────────
   deployed-smoke-test:
     name: Smoke test de l'environnement déployé
@@ -140,7 +186,7 @@ jobs:
   # ───────────────────── 4. Revue automatique par Claude ─────────────────────
   claude-review:
     name: Revue Claude (Debug-Tester)
-    needs: [quality, deploy-check]
+    needs: [quality, deploy-check, database]
     if: always() && github.event_name == 'pull_request' && !github.event.pull_request.draft
     runs-on: ubuntu-latest
     permissions:
@@ -181,6 +227,7 @@ jobs:
             Résultats des jobs automatiques sur ce commit :
             - Qualité du code : ${{ needs.quality.result }}
             - Vérification du déploiement : ${{ needs.deploy-check.result }}
+            - Migrations BDD : ${{ needs.database.result }}
             (Détails : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
             Lis `.claude/agents/debug-tester.md` et applique son rôle, ses principes et ses 5 piliers.

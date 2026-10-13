@@ -70,3 +70,14 @@ Le workflow `.github/workflows/pr-quality-deploy.yml` se lance **automatiquement
 - Rapport CML publié uniquement sur les pull requests
 - Validation des données avec un jeu de référence pour détecter la dérive
 - ⚠️ `scripts/train_and_evaluate.py` reste à écrire dans votre projet (il doit produire `results/metrics.txt` et les images)
+
+## Base de données (Railway : PostgreSQL + Redis)
+
+| Étape | Ce qui se passe, automatiquement |
+|---|---|
+| PR ouverte ou mise à jour | GitHub Actions crée une base PostgreSQL et un Redis **jetables**, applique les migrations deux fois (idempotence) et lance `tests/test_migrate.py`. La production n'est pas touchée. |
+| PR mergée sur `main` | Railway redéploie le service de migrations, qui applique `scripts/migrate.py` sur la base de production via le réseau privé. |
+
+- **Ajouter une modification de schéma** : créer `db/migrations/0002_ma_modif.sql` (numérotation croissante). Un fichier déjà appliqué ne doit jamais être modifié : créer une nouvelle migration à la place.
+- **Sécurité** : aucun mot de passe de base n'est stocké dans GitHub ; PostgreSQL et Redis ne sont pas exposés sur internet.
+- **En local** : `DATABASE_URL=postgresql://... python scripts/migrate.py`
