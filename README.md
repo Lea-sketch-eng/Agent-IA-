@@ -8,6 +8,7 @@ Agent Claude Code spécialisé dans le **debug**, la **correction de code** et l
 |---|---|
 | `.claude/agents/debug-tester.md` | Définition du subagent (rôle, méthode de debug, 5 piliers, tests utilisateurs, format de rapport) |
 | `.claude/skills/debug-test/SKILL.md` | Commande `/debug-test` pour invoquer l'agent à la demande |
+| `.claude/skills/nouveau-projet/SKILL.md` | Commande `/nouveau-projet` : dépôt GitHub, code de départ, PR, Railway et Vercel en une fois |
 | `templates/tests/user/PLAN_TESTS_UTILISATEURS.md` | Modèle de plan de tests utilisateurs (personas, Given/When/Then, session exploratoire) |
 | `templates/scripts/validate_data.py` | Data Testing : schéma, types, plages, valeurs manquantes, dérive (KS) |
 | `templates/github-actions-ml-tests.yml` | Workflow CI MLOps (pytest + validation données + évaluation + rapport CML) |
