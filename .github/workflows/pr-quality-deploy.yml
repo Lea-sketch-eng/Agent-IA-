@@ -106,7 +106,7 @@ jobs:
         if: needs.quality.outputs.docker == 'true'
         run: |
           docker run -d --name app -p "$APP_PORT:$APP_PORT" -e PORT="$APP_PORT" app:pr
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -fsS "http://localhost:$APP_PORT$HEALTH_PATH" > /dev/null; then
               echo "✅ Application joignable sur $HEALTH_PATH"; exit 0
             fi
