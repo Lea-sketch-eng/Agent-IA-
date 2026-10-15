@@ -14,18 +14,16 @@ Agent Claude Code spécialisé dans le **debug**, la **correction de code** et l
 | `templates/github-actions-ml-tests.yml` | Workflow CI MLOps (pytest + validation données + évaluation + rapport CML) |
 | `.github/workflows/pr-quality-deploy.yml` | Revue automatique de chaque PR (qualité, déploiement, revue Claude) |
 | `scripts/check_claude_config.py` | Vérifie que les agents et skills sont valides avant déploiement (dont `model` et `effort`) |
-| `.claude/agents/architect-orchestrator.md` | Architecte / Maître d'Orchestre : analyse, découpage, activation sélective des sous-agents, boucle APPROUVÉ / REJETÉ |
-| `.claude/agents/code-generator.md` | Sous-agent qui écrit le code d'une sous-tâche et corrige à chaque rejet |
-| `.claude/agents/code-verifier.md` | Sous-agent relecteur en lecture seule (verdict au format standard) |
-| `.claude/agents/db-migrator.md` | Sous-agent des migrations SQL (idempotentes, testées sur base jetable) |
-| `.claude/agents/security-auditor.md` | Sous-agent d'audit de sécurité en lecture seule (OWASP, secrets, dépendances) |
-| `.claude/skills/orchestrer/SKILL.md` | Commande `/orchestrer` pour lancer l'orchestrateur, y compris sur le web |
+| `Agents/` | **Bibliothèque d'agents réutilisables**, à installer dans vos projets (voir `Agents/README.md`) |
+| `Agents/architect-orchestrator/` | Architecte / Maître d'Orchestre + ses sous-agents + commande `/orchestrer` |
+| `Agents/install.sh` | Installe un agent du dossier `Agents/` dans un projet ou pour tous vos projets |
 
 ## Agent « Architecte / Maître d'Orchestre »
 
-Il découpe une tâche de développement, n'active que les sous-agents utiles et refuse le code tant qu'il n'est pas conforme.
+Il découpe une tâche de développement, n'active que les sous-agents utiles et refuse le code tant qu'il n'est pas conforme. Il est rangé dans `Agents/architect-orchestrator/` et s'installe dans le projet où vous voulez l'utiliser.
 
-- **Lancement** :
+- **Installation** : `Agents/install.sh architect-orchestrator <chemin-du-projet>` (ou `--global` pour tous vos projets) — détails dans `Agents/README.md`.
+- **Lancement** (dans le projet où il est installé) :
   - Terminal : `claude --agent architect-orchestrator "Implémente l'authentification OAuth2"`
   - Partout (terminal, web, app) : `/orchestrer Implémente l'authentification OAuth2`
 - **Déroulé** : analyse du projet → découpage en sous-tâches avec critères d'acceptation → 📢 plan d'activation (agents 🟢 actifs / ⚪ sautés) → écriture par les sous-agents → `VERDICT: APPROUVÉ` ou `VERDICT: REJETÉ` renvoyé au générateur.

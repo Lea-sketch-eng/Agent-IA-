@@ -1,5 +1,7 @@
 """Vérifie que les agents et skills Claude du dépôt sont déployables.
 
+Couvre `.claude/` et les agents rangés dans `Agents/<agent>/` (agents/ et skills/).
+
 Contrôles : frontmatter YAML présent et valide, champs `name` et `description`
 renseignés, nom identique au dossier pour les skills, outils, `model` et `effort`
 valides pour les agents.
@@ -57,8 +59,10 @@ def check_skill(path):
 
 
 def main():
-    checks = [(p, check_agent) for p in sorted(ROOT.glob(".claude/agents/*.md"))]
-    checks += [(p, check_skill) for p in sorted(ROOT.glob(".claude/skills/*/SKILL.md"))]
+    checks = []
+    for base in (".claude", "Agents/*"):
+        checks += [(p, check_agent) for p in sorted(ROOT.glob(f"{base}/agents/*.md"))]
+        checks += [(p, check_skill) for p in sorted(ROOT.glob(f"{base}/skills/*/SKILL.md"))]
     errors = []
     for path, check in checks:
         try:
