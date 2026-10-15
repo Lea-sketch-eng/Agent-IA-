@@ -41,7 +41,16 @@ Agents/install.sh --list
 
 - `/orchestrer Implémente l'authentification OAuth2`
 - `claude --agent architect-orchestrator "Implémente l'authentification OAuth2"` (terminal)
-- Pour qu'il soit l'agent par défaut d'un projet : ajouter `"agent": "architect-orchestrator"` dans `<projet>/.claude/settings.json`.
+- **Activation uniquement sur demande** : l'agent ne démarre jamais tout seul. Ne mettez pas `"agent": "architect-orchestrator"` dans `.claude/settings.json` : ce réglage le lancerait automatiquement à chaque session.
+
+## Garanties « uniquement sur demande »
+
+| Risque de démarrage automatique | Protection |
+|---|---|
+| Claude lance `/orchestrer` de lui-même | `disable-model-invocation: true` dans la commande : seul vous pouvez la taper |
+| Claude délègue à l'orchestrateur comme sous-agent | Sa description l'interdit, et s'il est lancé ainsi il ne fait rien et rend la main |
+| Claude utilise un sous-agent (`code-generator`…) hors orchestration | Leur description l'interdit, et sans brief de l'orchestrateur ils refusent et rendent la main |
+| L'orchestrateur devient l'agent par défaut | Aucun réglage `"agent"` n'est installé par `install.sh` |
 
 ## Ajouter un nouvel agent
 

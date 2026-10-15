@@ -2,6 +2,7 @@
 name: orchestrer
 description: Lance l'Architecte / Maître d'Orchestre sur une tâche de développement — analyse du projet, découpage, activation sélective des sous-agents (code-generator, code-verifier, db-migrator, security-auditor, debug-tester) et boucle de vérification APPROUVÉ / REJETÉ (3 itérations maximum). Usage — /orchestrer <tâche à réaliser>
 argument-hint: "<tâche de développement à réaliser>"
+disable-model-invocation: true
 ---
 
 Tâche à réaliser : **$ARGUMENTS**

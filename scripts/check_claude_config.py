@@ -27,7 +27,10 @@ def load_frontmatter(path):
     match = FRONTMATTER.match(path.read_text(encoding="utf-8"))
     if not match:
         raise ValueError("frontmatter YAML absent (le fichier doit commencer par ---)")
-    data = yaml.safe_load(match.group(1)) or {}
+    try:
+        data = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"frontmatter YAML invalide : {exc}") from exc
     for field in ("name", "description"):
         if not str(data.get(field, "")).strip():
             raise ValueError(f"champ `{field}` manquant ou vide")

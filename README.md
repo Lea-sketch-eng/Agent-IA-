@@ -33,7 +33,7 @@ Il découpe une tâche de développement, n'active que les sous-agents utiles et
   - Rien n'est commité ni poussé sans votre accord.
 - **Modèles** : orchestrateur, vérificateur et auditeur sur `opus` (l'orchestrateur en `effort: xhigh`) ; générateur et migrations sur `sonnet`, plus rapide et moins cher pour l'écriture.
 - **Limite** : un sous-agent ne peut pas lancer d'autres sous-agents. L'orchestrateur doit donc tourner comme agent principal (`--agent` ou `/orchestrer`), pas être appelé comme sous-agent.
-- **Rendre l'orchestrateur permanent sur un projet** (optionnel) : ajouter `"agent": "architect-orchestrator"` dans `.claude/settings.json`.
+- **Activation uniquement sur demande** : l'agent ne démarre jamais tout seul. Ne mettez pas `"agent": "architect-orchestrator"` dans `.claude/settings.json` : ce réglage le lancerait automatiquement à chaque session.
 
 ## Installation dans un autre projet
 

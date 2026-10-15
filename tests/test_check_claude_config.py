@@ -55,3 +55,17 @@ def test_agent_with_invalid_effort_fails(tmp_path):
     agent = write(tmp_path / "a.md", "---\nname: a\ndescription: d\neffort: extreme\n---\n")
     with pytest.raises(ValueError, match="effort"):
         check_agent(agent)
+
+
+def test_orchestrer_skill_is_user_invocable_only():
+    from check_claude_config import ROOT, load_frontmatter
+
+    skill = ROOT / "Agents" / "architect-orchestrator" / "skills" / "orchestrer" / "SKILL.md"
+    assert load_frontmatter(skill).get("disable-model-invocation") is True
+
+
+def test_agent_with_invalid_yaml_fails(tmp_path):
+    content = "---\nname: a\ndescription: Lancer : uniquement sur demande\n---\n"
+    agent = write(tmp_path / "a.md", content)
+    with pytest.raises(ValueError, match="YAML invalide"):
+        check_agent(agent)
