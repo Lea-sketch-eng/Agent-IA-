@@ -1,0 +1,184 @@
+name: PR – Qualité & Déploiement
+
+# Se déclenche automatiquement sur chaque PR (aucune action manuelle requise)
+# et à chaque déploiement réussi (preview Vercel/Netlify/Render… ou environnement GitHub).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  deployment_status:
+  workflow_dispatch:
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ───────────────────────── 1. Qualité du code ─────────────────────────
+  quality:
+    name: Qualité du code
+    if: github.event_name != 'deployment_status'
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.stack.outputs.python }}
+      node: ${{ steps.stack.outputs.node }}
+      docker: ${{ steps.stack.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Détecter la stack du projet
+        id: stack
+        run: |
+          if [ -n "$(git ls-files '*.py')" ]; then echo "python=true" >> "$GITHUB_OUTPUT"; fi
+          if [ -f package.json ]; then echo "node=true" >> "$GITHUB_OUTPUT"; fi
+          if [ -f Dockerfile ]; then echo "docker=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Lint des workflows GitHub Actions (actionlint)
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
+
+      # --- Python ---
+      - uses: actions/setup-python@v5
+        if: steps.stack.outputs.python == 'true'
+        with:
+          python-version: '3.11'
+
+      - name: Installer les dépendances Python
+        if: steps.stack.outputs.python == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff pytest pytest-cov
+          for f in requirements.txt requirements-dev.txt; do
+            if [ -f "$f" ]; then pip install -r "$f"; fi
+          done
+
+      - name: Lint Python (ruff)
+        if: steps.stack.outputs.python == 'true'
+        run: ruff check --output-format=github .
+
+      - name: Tests Python + couverture (pytest)
+        if: steps.stack.outputs.python == 'true'
+        run: |
+          set +e
+          pytest --cov --cov-report=term-missing --junitxml=junit/test-results.xml
+          code=$?
+          # 5 = aucun test trouvé : on ne bloque pas un projet sans tests
+          if [ "$code" -eq 5 ]; then echo "::warning::Aucun test Python trouvé"; exit 0; fi
+          exit "$code"
+
+      # --- Node.js ---
+      - uses: actions/setup-node@v4
+        if: steps.stack.outputs.node == 'true'
+        with:
+          node-version: '20'
+
+      - name: Lint, tests et build Node.js
+        if: steps.stack.outputs.node == 'true'
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          npm run lint --if-present
+          npm test --if-present
+          npm run build --if-present
+
+  # ──────────────────── 2. Vérification du déploiement ────────────────────
+  deploy-check:
+    name: Vérification du déploiement
+    needs: quality
+    runs-on: ubuntu-latest
+    env:
+      APP_PORT: ${{ vars.APP_PORT || '8080' }}
+      HEALTH_PATH: ${{ vars.HEALTH_PATH || '/' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Valider la configuration des agents Claude
+        if: hashFiles('.claude/**') != ''
+        run: python3 scripts/check_claude_config.py
+
+      - name: Build de l'image Docker
+        if: needs.quality.outputs.docker == 'true'
+        run: docker build -t app:pr .
+
+      - name: Smoke test du conteneur
+        if: needs.quality.outputs.docker == 'true'
+        run: |
+          docker run -d --name app -p "$APP_PORT:$APP_PORT" -e PORT="$APP_PORT" app:pr
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://localhost:$APP_PORT$HEALTH_PATH" > /dev/null; then
+              echo "✅ Application joignable sur $HEALTH_PATH"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::L'application ne répond pas sur le port $APP_PORT$HEALTH_PATH"
+          docker logs app
+          exit 1
+
+  # ─────────── 2b. Base de données : migrations sur une base jetable ───────────
+  # La base de production n'est jamais touchée par une PR : Railway applique
+  # les migrations en production uniquement après le merge sur main.
+  database:
+    name: Migrations BDD (PostgreSQL + Redis jetables)
+    needs: quality
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:8.2
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt pytest
+
+      - name: Appliquer les migrations (2 fois pour vérifier l'idempotence)
+        run: |
+          python scripts/migrate.py
+          python scripts/migrate.py | grep -q "Base déjà à jour"
+
+      - name: Tests des migrations
+        run: pytest tests/test_migrate.py -v
+
+      - name: Vérifier Redis
+        run: python -c "import os, redis; assert redis.from_url(os.environ['REDIS_URL']).ping(); print('✅ Redis OK')"
+
+  # ─────────────── 3. Smoke test d'un déploiement réel (preview) ───────────────
+  deployed-smoke-test:
+    name: Smoke test de l'environnement déployé
+    if: github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier que l'URL déployée répond
+        env:
+          URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+        run: |
+          if [ -z "$URL" ]; then echo "::warning::Aucune URL de déploiement fournie"; exit 0; fi
+          for i in $(seq 1 10); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' -L "$URL")
+            if [ "$status" -ge 200 ] && [ "$status" -lt 400 ]; then
+              echo "✅ $URL répond ($status)"; exit 0
+            fi
+            echo "Tentative $i : HTTP $status"; sleep 6
+          done
+          echo "::error::Le déploiement $URL ne répond pas correctement (dernier statut : $status)"
+          exit 1
