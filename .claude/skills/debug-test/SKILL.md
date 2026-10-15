@@ -1,18 +1,20 @@
 ---
 name: debug-test
-description: Lance l'agent Debug-Tester pour diagnostiquer et corriger un bug, réparer des tests ou une CI en échec, ou exécuter des tests utilisateurs. Usage — /debug-test <description du problème | fichier | "tests utilisateurs" | "ci">
+description: Agent Debug-Tester — diagnostique et corrige un bug, répare des tests ou une CI en échec, exécute des tests utilisateurs. Ne se lance que sur invocation explicite. Usage — /debug-test <description du problème | fichier | "tests utilisateurs" | "ci">
 argument-hint: "<bug, fichier, 'tests utilisateurs' ou 'ci'>"
+disable-model-invocation: true
 ---
 
-Délègue la demande suivante au subagent `debug-tester` (outil Agent, `subagent_type: "debug-tester"`) :
+Tu agis maintenant en tant qu'agent **Debug-Tester**, à la demande explicite de l'utilisateur.
 
-**Demande :** $ARGUMENTS
+1. Lis `.claude/skills/debug-test/debug-tester.md` en entier et applique son rôle, ses principes, sa méthode, ses 5 piliers et son format de rapport.
+2. Traite la demande suivante : **$ARGUMENTS**
 
-Règles de délégation :
+Règles selon la demande :
 
-- Si la demande est vide, demande à l'agent d'exécuter la suite de tests du projet, d'analyser les échecs et de les corriger.
-- Si elle contient « tests utilisateurs » ou « user test », demande-lui de produire les personas, les scénarios Given/When/Then, de les **exécuter réellement** puis d'automatiser ceux qui révèlent un bug.
-- Si elle contient « ci », demande-lui d'analyser les workflows `.github/workflows/` et les derniers logs disponibles, puis de reproduire l'échec en local.
-- Transmets toujours le contexte utile déjà connu dans la conversation (message d'erreur, fichier concerné, commande lancée).
+- **Vide** : exécute la suite de tests du projet, analyse les échecs et corrige-les.
+- **Contient « tests utilisateurs » ou « user test »** : produis les personas et les scénarios Given/When/Then, **exécute-les réellement**, puis automatise ceux qui révèlent un bug.
+- **Contient « ci »** : analyse les workflows `.github/workflows/` et les derniers logs disponibles, puis reproduis l'échec en local.
+- Utilise le contexte déjà connu dans la conversation (message d'erreur, fichier concerné, commande lancée).
 
-Une fois l'agent terminé, restitue son rapport à l'utilisateur en bullet points, sans le résumer au point de perdre la cause racine, les commandes de vérification ou les risques restants.
+Quand la demande est traitée, reprends ton rôle habituel : n'applique plus la méthode Debug-Tester tant que l'utilisateur ne relance pas `/debug-test`.

@@ -32,6 +32,30 @@ def test_agent_without_description_fails(tmp_path):
 
 
 def test_skill_name_must_match_folder(tmp_path):
-    skill = write(tmp_path / "debug-test" / "SKILL.md", "---\nname: autre\ndescription: d\n---\n")
+    skill = write(
+        tmp_path / "debug-test" / "SKILL.md",
+        "---\nname: autre\ndescription: d\ndisable-model-invocation: true\n---\n",
+    )
     with pytest.raises(ValueError, match="différent du dossier"):
         check_skill(skill)
+
+
+def test_skill_without_disable_model_invocation_fails(tmp_path):
+    content = "---\nname: debug-test\ndescription: d\n---\n"
+    skill = write(tmp_path / "debug-test" / "SKILL.md", content)
+    with pytest.raises(ValueError, match="disable-model-invocation"):
+        check_skill(skill)
+
+
+def test_manual_only_skill_passes(tmp_path):
+    skill = write(
+        tmp_path / "debug-test" / "SKILL.md",
+        "---\nname: debug-test\ndescription: d\ndisable-model-invocation: true\n---\n",
+    )
+    check_skill(skill)
+
+
+def test_agent_inviting_proactive_use_fails(tmp_path):
+    agent = write(tmp_path / "a.md", "---\nname: a\ndescription: À utiliser PROACTIVEMENT\n---\n")
+    with pytest.raises(ValueError, match="automatique"):
+        check_agent(agent)

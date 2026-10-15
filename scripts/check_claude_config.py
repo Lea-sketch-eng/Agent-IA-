@@ -2,6 +2,9 @@
 
 Contrôles : frontmatter YAML présent et valide, champs `name` et `description`
 renseignés, nom identique au dossier pour les skills, outils connus pour les agents.
+Aucun agent ni aucune skill ne doit pouvoir se déclencher sans invocation explicite :
+les skills doivent porter `disable-model-invocation: true` et la description d'un
+agent ne doit pas inviter Claude à l'utiliser de lui-même.
 Sort en code 1 au premier problème détecté (bloque la CI).
 """
 import re
@@ -16,6 +19,7 @@ KNOWN_TOOLS = {
     "NotebookEdit", "Agent", "Task", "TodoWrite",
 }
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
+AUTO_TRIGGER = re.compile(r"proactiv|automatique|automatically|without being asked", re.IGNORECASE)
 
 
 def load_frontmatter(path):
@@ -31,6 +35,8 @@ def load_frontmatter(path):
 
 def check_agent(path):
     data = load_frontmatter(path)
+    if AUTO_TRIGGER.search(data["description"]):
+        raise ValueError("la description invite à un déclenchement automatique")
     tools = data.get("tools")
     if tools:
         names = tools if isinstance(tools, list) else [t.strip() for t in tools.split(",")]
@@ -43,6 +49,8 @@ def check_skill(path):
     data = load_frontmatter(path)
     if data["name"] != path.parent.name:
         raise ValueError(f"`name` ({data['name']}) différent du dossier ({path.parent.name})")
+    if data.get("disable-model-invocation") is not True:
+        raise ValueError("`disable-model-invocation: true` manquant (lancement auto possible)")
 
 
 def main():

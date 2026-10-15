@@ -2,6 +2,7 @@
 name: nouveau-projet
 description: Démarre un nouveau projet de code de bout en bout — dépôt GitHub, code de départ (site + API + base de données), CI, première PR, projet Railway (API, PostgreSQL, Redis) et projet Vercel (site) reliés au dépôt. Usage — /nouveau-projet <description de ce qu'il faut construire>
 argument-hint: "<ce que vous voulez construire>"
+disable-model-invocation: true
 ---
 
 Démarre le projet suivant de bout en bout : **$ARGUMENTS**
@@ -31,7 +32,7 @@ Réponds en français, en bullet points. Annonce chaque grande étape en une lig
   - `web/` : Next.js qui affiche l'état de l'API via `NEXT_PUBLIC_API_URL`.
   - `db/migrations/0001_init.sql` : schéma initial correspondant au besoin.
 - Recopie depuis le dépôt modèle `Lea-sketch-eng/Agent-IA-` (lis-le avec les outils GitHub, adapte les chemins) :
-  - `.claude/agents/debug-tester.md`, `.claude/skills/debug-test/`, `.claude/skills/nouveau-projet/` (pour que cette commande existe aussi dans le nouveau dépôt) ;
+  - `.claude/skills/debug-test/` (agent Debug-Tester, à la demande uniquement), `.claude/skills/nouveau-projet/`, `.github/workflows/debug-tester-on-demand.yml` (pour que cette commande existe aussi dans le nouveau dépôt) ;
   - `.github/workflows/pr-quality-deploy.yml` — adapte la détection de stack aux sous-dossiers `api/` et `web/` (`working-directory`) ;
   - `scripts/migrate.py`, `scripts/check_claude_config.py`, `tests/test_migrate.py`, `pyproject.toml`.
 - `railway.json` dans `api/` : démarrage de l'API avec les migrations en `preDeployCommand`, pour qu'elles s'appliquent à chaque déploiement de `main`.
