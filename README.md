@@ -13,7 +13,29 @@ Agent Claude Code spécialisé dans le **debug**, la **correction de code** et l
 | `templates/scripts/validate_data.py` | Data Testing : schéma, types, plages, valeurs manquantes, dérive (KS) |
 | `templates/github-actions-ml-tests.yml` | Workflow CI MLOps (pytest + validation données + évaluation + rapport CML) |
 | `.github/workflows/pr-quality-deploy.yml` | Revue automatique de chaque PR (qualité, déploiement, revue Claude) |
-| `scripts/check_claude_config.py` | Vérifie que les agents et skills sont valides avant déploiement |
+| `scripts/check_claude_config.py` | Vérifie que les agents et skills sont valides avant déploiement (dont `model` et `effort`) |
+| `.claude/agents/architect-orchestrator.md` | Architecte / Maître d'Orchestre : analyse, découpage, activation sélective des sous-agents, boucle APPROUVÉ / REJETÉ |
+| `.claude/agents/code-generator.md` | Sous-agent qui écrit le code d'une sous-tâche et corrige à chaque rejet |
+| `.claude/agents/code-verifier.md` | Sous-agent relecteur en lecture seule (verdict au format standard) |
+| `.claude/agents/db-migrator.md` | Sous-agent des migrations SQL (idempotentes, testées sur base jetable) |
+| `.claude/agents/security-auditor.md` | Sous-agent d'audit de sécurité en lecture seule (OWASP, secrets, dépendances) |
+| `.claude/skills/orchestrer/SKILL.md` | Commande `/orchestrer` pour lancer l'orchestrateur, y compris sur le web |
+
+## Agent « Architecte / Maître d'Orchestre »
+
+Il découpe une tâche de développement, n'active que les sous-agents utiles et refuse le code tant qu'il n'est pas conforme.
+
+- **Lancement** :
+  - Terminal : `claude --agent architect-orchestrator "Implémente l'authentification OAuth2"`
+  - Partout (terminal, web, app) : `/orchestrer Implémente l'authentification OAuth2`
+- **Déroulé** : analyse du projet → découpage en sous-tâches avec critères d'acceptation → 📢 plan d'activation (agents 🟢 actifs / ⚪ sautés) → écriture par les sous-agents → `VERDICT: APPROUVÉ` ou `VERDICT: REJETÉ` renvoyé au générateur.
+- **Garde-fous** :
+  - L'orchestrateur n'a ni `Edit` ni `Write` : il ne peut pas écrire de code lui-même.
+  - 3 itérations maximum par sous-tâche ; au-delà, il annule uniquement les fichiers de cette sous-tâche et rend un rapport d'escalade.
+  - Rien n'est commité ni poussé sans votre accord.
+- **Modèles** : orchestrateur, vérificateur et auditeur sur `opus` (l'orchestrateur en `effort: xhigh`) ; générateur et migrations sur `sonnet`, plus rapide et moins cher pour l'écriture.
+- **Limite** : un sous-agent ne peut pas lancer d'autres sous-agents. L'orchestrateur doit donc tourner comme agent principal (`--agent` ou `/orchestrer`), pas être appelé comme sous-agent.
+- **Rendre l'orchestrateur permanent sur un projet** (optionnel) : ajouter `"agent": "architect-orchestrator"` dans `.claude/settings.json`.
 
 ## Installation dans un autre projet
 

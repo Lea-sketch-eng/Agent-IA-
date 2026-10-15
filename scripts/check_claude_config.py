@@ -1,7 +1,8 @@
 """Vérifie que les agents et skills Claude du dépôt sont déployables.
 
 Contrôles : frontmatter YAML présent et valide, champs `name` et `description`
-renseignés, nom identique au dossier pour les skills, outils connus pour les agents.
+renseignés, nom identique au dossier pour les skills, outils, `model` et `effort`
+valides pour les agents.
 Sort en code 1 au premier problème détecté (bloque la CI).
 """
 import re
@@ -15,6 +16,8 @@ KNOWN_TOOLS = {
     "Read", "Edit", "Write", "Bash", "Grep", "Glob", "WebFetch", "WebSearch",
     "NotebookEdit", "Agent", "Task", "TodoWrite",
 }
+MODEL_ALIASES = {"inherit", "opus", "sonnet", "haiku"}
+EFFORT_LEVELS = {"low", "medium", "high", "xhigh", "max"}
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
 
@@ -37,6 +40,14 @@ def check_agent(path):
         unknown = [t for t in names if t not in KNOWN_TOOLS and not t.startswith("mcp__")]
         if unknown:
             raise ValueError(f"outils inconnus : {unknown}")
+    model = data.get("model")
+    if model and model not in MODEL_ALIASES and not str(model).startswith("claude-"):
+        raise ValueError(
+            f"`model` invalide ({model}) : utiliser {sorted(MODEL_ALIASES)} ou un ID claude-…"
+        )
+    effort = data.get("effort")
+    if effort and effort not in EFFORT_LEVELS:
+        raise ValueError(f"`effort` invalide ({effort}) : utiliser {sorted(EFFORT_LEVELS)}")
 
 
 def check_skill(path):

@@ -35,3 +35,23 @@ def test_skill_name_must_match_folder(tmp_path):
     skill = write(tmp_path / "debug-test" / "SKILL.md", "---\nname: autre\ndescription: d\n---\n")
     with pytest.raises(ValueError, match="différent du dossier"):
         check_skill(skill)
+
+
+def test_agent_with_invalid_model_fails(tmp_path):
+    agent = write(tmp_path / "a.md", "---\nname: a\ndescription: d\nmodel: opus-5.5\n---\n")
+    with pytest.raises(ValueError, match="model"):
+        check_agent(agent)
+
+
+def test_agent_with_model_alias_or_id_and_effort_passes(tmp_path):
+    for model in ("opus", "inherit", "claude-opus-5-5"):
+        agent = write(
+            tmp_path / "a.md", f"---\nname: a\ndescription: d\nmodel: {model}\neffort: xhigh\n---\n"
+        )
+        check_agent(agent)
+
+
+def test_agent_with_invalid_effort_fails(tmp_path):
+    agent = write(tmp_path / "a.md", "---\nname: a\ndescription: d\neffort: extreme\n---\n")
+    with pytest.raises(ValueError, match="effort"):
+        check_agent(agent)
